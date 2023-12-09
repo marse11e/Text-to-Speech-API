@@ -21,11 +21,38 @@ MAX_FILE_NAME_LENGTH = 20
 
 
 class BaseTextToSpeechView(generics.GenericAPIView):
+    """
+    Класс BaseTextToSpeechView является базовым классом для обработки запросов, связанных с текстом в речь.
+
+    Attributes:
+        queryset (QuerySet): Набор данных для выполнения запросов к базе данных.
+        serializer_class (Type[Serializer]): Класс сериализатора, используемый для преобразования данных.
+        permission_classes (List[Type[BasePermission]]): Список классов разрешений, определяющих, кто может выполнять операции.
+
+    Methods:
+        validate_request_data(text: str, file_name: str) -> None:
+            Проверяет данные запроса на соответствие заданным правилам.
+
+    Raises:
+        serializers.ValidationError: Вызывается, если данные запроса не прошли валидацию.
+
+    """
     queryset = Text_to_speech.objects.all()
     serializer_class = TextToSpeechSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def validate_request_data(self, text, file_name):
+        """
+        Проверяет данные запроса на соответствие заданным правилам.
+
+        Args:
+            text (str): Текст, который нужно преобразовать в речь.
+            file_name (str): Имя файла для аудиозаписи.
+
+        Raises:
+            serializers.ValidationError: Вызывается, если данные запроса не прошли валидацию.
+
+        """
         if not text:
             raise serializers.ValidationError({"error": "Текст не может быть пустым."})
         elif len(text) < MIN_TEXT_LENGTH:
@@ -55,7 +82,31 @@ class BaseTextToSpeechView(generics.GenericAPIView):
 
 
 class TextToSpeechView(BaseTextToSpeechView, generics.ListCreateAPIView):
-    def user_text(self, file_name, text):
+    """
+    Класс TextToSpeechView обрабатывает запросы на создание и получение записей о тексте в речь.
+
+    Attributes:
+        ...
+
+    Methods:
+        user_text(file_name: str, text: str) -> str:
+            Создает аудиофайл на основе переданного текста и имени файла.
+        post(request: Request, *args, **kwargs) -> Response:
+            Обрабатывает HTTP POST-запрос для создания новой записи текста в речь.
+
+    """
+    def user_text(self, file_name, text, *args, **kwargs):
+        """
+        Создает аудиофайл на основе переданного текста и имени файла.
+
+        Args:
+            file_name (str): Имя файла для аудиозаписи.
+            text (str): Текст, который нужно преобразовать в речь.
+
+        Returns:
+            str: Путь к созданному аудиофайлу.
+
+        """
         match = re.search(r"[\u0400-\u04ff]|[\u0500-\u052f]", text)
         lang = "ru" if match else "en"
         tts = gTTS(text=text, lang=lang)
@@ -70,6 +121,17 @@ class TextToSpeechView(BaseTextToSpeechView, generics.ListCreateAPIView):
         return voice_path
 
     def post(self, request, *args, **kwargs):
+        """
+        Обрабатывает HTTP POST-запрос для создания новой записи текста в речь.
+
+        Args:
+            request (Request): Запрос, содержащий данные о тексте и имени файла.
+
+        Returns:
+            Response: Ответ на запрос.
+
+        """
+        # Реализация обработки POST-запроса
         text = request.data.get("text")
         file_name = request.data.get("file_name")
 
@@ -86,13 +148,49 @@ class TextToSpeechView(BaseTextToSpeechView, generics.ListCreateAPIView):
 class TextToSpeechDetailView(
     BaseTextToSpeechView, generics.RetrieveUpdateDestroyAPIView
 ):
+    """
+    Класс TextToSpeechDetailView обрабатывает запросы на просмотр, обновление и удаление записей текста в речь.
+
+    Attributes:
+        ...
+
+    Methods:
+        update_voice(file_name: str, text: str) -> None:
+            Обновляет аудиофайл на основе переданного текста и имени файла.
+        put(request: Request, *args, **kwargs) -> Response:
+            Обрабатывает HTTP PUT-запрос для обновления записи текста в речь.
+
+    """
     def update_voice(self, file_name, text):
+        """
+        Обновляет аудиофайл на основе переданного текста и имени файла.
+
+        Args:
+            file_name (str): Имя файла для аудиозаписи.
+            text (str): Текст, который нужно преобразовать в речь.
+
+        Returns:
+            None
+
+        """
+        # Реализация обновления аудиофайла
         voice_path = self.user_text(file_name, text)
 
         self.get_object().voice = voice_path
         self.get_object().save()
 
     def put(self, request, *args, **kwargs):
+        """
+        Обрабатывает HTTP PUT-запрос для обновления записи текста в речь.
+
+        Args:
+            request (Request): Запрос, содержащий данные о тексте и имени файла.
+
+        Returns:
+            Response: Ответ на запрос.
+
+        """
+        # Реализация обработки PUT-запроса
         text = request.data.get("text")
         file_name = request.data.get("file_name")
 
@@ -112,11 +210,37 @@ class TextToSpeechDetailView(
 
 
 class DownloadVoiceView(generics.RetrieveAPIView):
+    """
+    Класс DownloadVoiceView обрабатывает запросы на скачивание аудиофайлов.
+
+    Attributes:
+        ...
+
+    Methods:
+        retrieve(request: Request, file_name: str, *args, **kwargs) -> Response:
+            Обрабатывает HTTP GET-запрос для скачивания аудиофайла.
+
+    Returns:
+        Response: Ответ на запрос с аудиофайлом вложением.
+
+    """
     queryset = Text_to_speech.objects.all()
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "file_name"
 
     def retrieve(self, request, file_name, *args, **kwargs):
+        """
+        Обрабатывает HTTP GET-запрос для скачивания аудиофайла.
+
+        Args:
+            request (Request): Запрос на скачивание аудиофайла.
+            file_name (str): Имя файла аудиозаписи.
+
+        Returns:
+            Response: Ответ на запрос с аудиофайлом вложением.
+
+        """
+        # Реализация скачивания аудиофайла
         text_to_speech = get_object_or_404(self.get_queryset(), file_name=file_name)
         voice_path = text_to_speech.voice
         response = FileResponse(open(voice_path, "rb"))
