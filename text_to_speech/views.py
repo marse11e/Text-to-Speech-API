@@ -2,22 +2,110 @@ import io
 import re
 
 from gtts import gTTS
+from django.utils import timezone
 from django.http import FileResponse
-from django.core.exceptions import ValidationError
+from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404
+from django.core.exceptions import ValidationError
 
-from rest_framework.response import Response
-from rest_framework import generics, permissions, status
 from rest_framework import serializers
+from rest_framework.response import Response
+from rest_framework.authtoken.models import Token
+from rest_framework import generics, permissions, status
+from rest_framework.authtoken.views import ObtainAuthToken
 
 from .models import Text_to_speech
-from .serializers import TextToSpeechSerializer
+from .serializers import TextToSpeechSerializer, UserSerializer
 
 
 MIN_TEXT_LENGTH = 10
 MIN_FILE_NAME_LENGTH = 5
 MAX_TEXT_LENGTH = 700
 MAX_FILE_NAME_LENGTH = 20
+
+
+class CustomObtainAuthToken(ObtainAuthToken):
+    """
+    Класс CustomObtainAuthToken предоставляет кастомный механизм получения токена доступа.
+
+    Methods:
+        post(request: Request, *args, **kwargs) -> Response:
+            Обрабатывает HTTP POST-запрос для создания или обновления токена доступа.
+
+    """
+
+    def post(self, request, *args, **kwargs):
+        """
+        Обрабатывает HTTP POST-запрос для создания или обновления токена доступа.
+
+        Args:
+            request (Request): Запрос на создание или обновление токена.
+
+        Returns:
+            Response: Ответ на запрос с токеном доступа.
+
+        """
+        serializer = self.serializer_class(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data["user"]
+
+        token, created = Token.objects.get_or_create(user=user)
+        if created:
+            return Response(
+                {
+                    "token": token.key,
+                    "user_id": user.pk,
+                    "username": user.username,
+                    "message": "Token created",
+                }
+            )
+        else:
+            token.created = timezone.now()
+            token.save()
+            return Response(
+                {
+                    "token": token.key,
+                    "user_id": user.pk,
+                    "username": user.username,
+                    "message": "Token refreshed",
+                }
+            )
+
+
+class CreateUserView(generics.CreateAPIView):
+    """
+    Класс CreateUserView обрабатывает запросы на создание нового пользователя.
+
+    Attributes:
+        serializer_class (Type[Serializer]): Класс сериализатора, используемый для преобразования данных.
+        permission_classes (List[Type[BasePermission]]): Список классов разрешений, определяющих, кто может выполнять операции.
+
+    Methods:
+        create(request: Request, *args, **kwargs) -> Response:
+            Обрабатывает HTTP POST-запрос для создания нового пользователя.
+
+    """
+
+    serializer_class = UserSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        """
+        Обрабатывает HTTP POST-запрос для создания нового пользователя.
+
+        Args:
+            request (Request): Запрос на создание нового пользователя.
+
+        Returns:
+            Response: Ответ на запрос с токеном доступа.
+
+        """
+        response = super().create(request, *args, **kwargs)
+        user = User.objects.get(username=request.data["username"])
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({"token": token.key}, status=status.HTTP_201_CREATED)
 
 
 class BaseTextToSpeechView(generics.GenericAPIView):
@@ -37,6 +125,7 @@ class BaseTextToSpeechView(generics.GenericAPIView):
         serializers.ValidationError: Вызывается, если данные запроса не прошли валидацию.
 
     """
+
     queryset = Text_to_speech.objects.all()
     serializer_class = TextToSpeechSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -95,6 +184,7 @@ class TextToSpeechView(BaseTextToSpeechView, generics.ListCreateAPIView):
             Обрабатывает HTTP POST-запрос для создания новой записи текста в речь.
 
     """
+
     def user_text(self, file_name, text, *args, **kwargs):
         """
         Создает аудиофайл на основе переданного текста и имени файла.
@@ -161,6 +251,7 @@ class TextToSpeechDetailView(
             Обрабатывает HTTP PUT-запрос для обновления записи текста в речь.
 
     """
+
     def update_voice(self, file_name, text):
         """
         Обновляет аудиофайл на основе переданного текста и имени файла.
@@ -224,6 +315,7 @@ class DownloadVoiceView(generics.RetrieveAPIView):
         Response: Ответ на запрос с аудиофайлом вложением.
 
     """
+
     queryset = Text_to_speech.objects.all()
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "file_name"
